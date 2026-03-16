@@ -38,23 +38,20 @@
         button:active { background: #f0f0f0; transform: translateY(2px); }
         
         /* Custom Color Wheel Button */
-        #palette { display: flex; align-items: center; justify-content: center; border-right: 12px; }
+        #palette { display: flex; align-items: center; justify-content: center; border-right: 2px solid rgba(0,0,0,0.1); padding-right: 12px; }
         .color-wheel-wrapper {
             position: relative; width: 42px; height: 42px; border-radius: 50%;
-            background: #000000;
+            background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red);
             box-shadow: 0 3px 10px rgba(0,0,0,0.2); cursor: pointer; border: 3px solid #fff;
             transition: transform 0.2s;
         }
         .color-wheel-wrapper:active { transform: scale(0.9); }
-
-        /* Custom Color Wheel Modal */
-        #colorWheelModal {
-            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.6); z-index: 100; justify-content: center; align-items: center; backdrop-filter: blur(5px);
+        .color-wheel-wrapper input[type="color"] {
+            opacity: 0; width: 100%; height: 100%; position: absolute; top:0; left:0; cursor: pointer;
         }
-        #colorWheelCanvas { border-radius: 50%; cursor: crosshair; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
 
-        #brushSize { width: 80px; accent-color: #333; }
+        /* Brush Slider Size Adjusted */
+        #brushSize { width: 140px; height: 16px; accent-color: #333; cursor: pointer; }
         #clearBtn { background: #ff4757; color: white; border: none; }
         
         #comments-wrapper {
@@ -89,14 +86,6 @@
             <button id="closeCanvasBtn" class="win-btn" style="background: #e74c3c; color: white;">Close Canvas</button>
         </div>
     </div>
-    
-    <div id="colorWheelModal">
-        <div style="background:#fff; padding:20px; border-radius:20px; display:flex; flex-direction:column; align-items:center;">
-            <p style="margin: 0 0 15px 0; font-weight: 600; color: #333;">Select a color</p>
-            <canvas id="colorWheelCanvas" width="260" height="260"></canvas>
-            <button id="closeColorWheel" style="margin-top:20px; padding: 10px 30px; background:#ff4757; color:white; border:none; border-radius:12px; font-weight:bold;">Close</button>
-        </div>
-    </div>
 
     <div id="canvas-container">
         <canvas id="board"></canvas>
@@ -110,7 +99,9 @@
     
     <div id="toolbar">
         <div id="palette">
-            <div class="color-wheel-wrapper" title="Choose Color"></div>
+            <div class="color-wheel-wrapper" title="Choose Color">
+                <input type="color" id="colorPicker" value="#000000">
+            </div>
         </div>
         
         <input type="range" id="brushSize" min="1" max="50" value="5">
@@ -118,9 +109,9 @@
             <option value="solid">🖌️ Solid Brush</option>
             <option value="fill">🪣 Fill Color</option>
             <option value="airbrush">💨 Airbrush</option>
-            <option value="angular">✒️ Calligraphy</option>
-            <option value="marker">🖍️ Marker</option>
-            <option value="watercolor">💧 Watercolor</option>
+            <option value="velvet">🖍️ Velvet Pastel</option>
+            <option value="wet">🖌️ Wet Brush</option>
+            <option value="spray">💨 Spray Brush</option>
             <option value="eraser">🧽 Eraser</option>
             <option value="line">📏 Line</option>
             <option value="rect">🔲 Rectangle</option>
@@ -170,7 +161,6 @@
         
         let gameIsActive = true;
         let keepDrawing = false; 
-        let currentColor = "#000000";
 
         // Comments Minimize Logic
         let commentsVisible = true;
@@ -180,56 +170,8 @@
             e.target.innerText = commentsVisible ? '🔽 Hide' : '🔼 Show';
         };
 
-        // Custom Color Wheel Logic
-        const cwCanvas = document.getElementById('colorWheelCanvas');
-        const cwCtx = cwCanvas.getContext('2d', { willReadFrequently: true });
-
-        function drawSegmentedColorWheel() {
-            const radius = cwCanvas.width / 2;
-            const rings = 6;
-            const slices = 24;
-            
-            for (let i = rings; i > 0; i--) {
-                const r = (radius / rings) * i;
-                const lightness = 100 - (i / rings) * 50; 
-                
-                for (let j = 0; j < slices; j++) {
-                    const startAngle = (j * 360 / slices) * Math.PI / 180;
-                    const endAngle = ((j + 1) * 360 / slices) * Math.PI / 180;
-                    
-                    cwCtx.beginPath();
-                    cwCtx.moveTo(radius, radius);
-                    cwCtx.arc(radius, radius, r, startAngle, endAngle);
-                    cwCtx.closePath();
-                    
-                    const hue = j * (360 / slices);
-                    cwCtx.fillStyle = `hsl(${hue}, 100%, ${lightness}%)`;
-                    cwCtx.fill();
-                }
-            }
-        }
-        drawSegmentedColorWheel();
-
-        document.querySelector('.color-wheel-wrapper').onclick = () => {
-            document.getElementById('colorWheelModal').style.display = 'flex';
-        };
-
-        document.getElementById('closeColorWheel').onclick = () => {
-            document.getElementById('colorWheelModal').style.display = 'none';
-        };
-
-        cwCanvas.addEventListener('click', (e) => {
-            const rect = cwCanvas.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
-            const p = cwCtx.getImageData(x, y, 1, 1).data;
-            
-            if(p[3] === 0) return; // transparent ignore
-            
-            currentColor = "#" + ("000000" + ((p[0] << 16) | (p[1] << 8) | p[2]).toString(16)).slice(-6);
-            document.querySelector('.color-wheel-wrapper').style.background = currentColor;
-            document.getElementById('colorWheelModal').style.display = 'none';
-            
+        // Reset to solid brush if color is changed from eraser
+        document.getElementById('colorPicker').addEventListener('input', () => {
             let tool = document.getElementById('toolSelect').value;
             if (tool === 'eraser') document.getElementById('toolSelect').value = 'solid';
         });
@@ -623,12 +565,14 @@
                 if (e.touches && e.touches.length > 1 || (!gameIsActive && !keepDrawing)) return;
                 
                 const rect = canvas.getBoundingClientRect();
-                startX = ((e.clientX - rect.left) / scale) * (canvas.width / rect.width);
-                startY = ((e.clientY - rect.top) / scale) * (canvas.height / rect.height);
+                
+                // Fixing stroke placement during zoom (removed / scale)
+                startX = (e.clientX - rect.left) * (canvas.width / rect.width);
+                startY = (e.clientY - rect.top) * (canvas.height / rect.height);
                 
                 let tool = document.getElementById('toolSelect').value;
                 if (tool === 'fill') {
-                    floodFill(startX, startY, hexToRgb(currentColor));
+                    floodFill(startX, startY, hexToRgb(document.getElementById('colorPicker').value));
                     saveState();
                     return;
                 }
@@ -641,10 +585,13 @@
             container.addEventListener('pointermove', (e) => {
                 if (!drawing || (!gameIsActive && !keepDrawing)) return;
                 const rect = canvas.getBoundingClientRect();
-                const currentX = ((e.clientX - rect.left) / scale) * (canvas.width / rect.width);
-                const currentY = ((e.clientY - rect.top) / scale) * (canvas.height / rect.height);
+                
+                // Fixing stroke placement during zoom (removed / scale)
+                const currentX = (e.clientX - rect.left) * (canvas.width / rect.width);
+                const currentY = (e.clientY - rect.top) * (canvas.height / rect.height);
+                
                 let tool = document.getElementById('toolSelect').value;
-                let color = tool === 'eraser' ? 'white' : currentColor;
+                let color = tool === 'eraser' ? 'white' : document.getElementById('colorPicker').value;
                 let size = document.getElementById('brushSize').value * dpr;
 
                 ctx.strokeStyle = color;
@@ -658,18 +605,30 @@
                 ctx.globalAlpha = 1.0;
                 ctx.shadowBlur = 0;
 
-                if (tool === 'marker') {
-                    ctx.globalCompositeOperation = 'multiply';
-                    ctx.globalAlpha = 0.4;
-                } else if (tool === 'watercolor') {
-                    ctx.globalAlpha = 0.08;
-                    ctx.shadowBlur = size * 1.5;
+                if (tool === 'velvet') {
+                    ctx.globalAlpha = 0.7;
+                    ctx.shadowBlur = 2;
                     ctx.shadowColor = color;
-                } else if (tool === 'angular') {
-                    ctx.lineCap = 'square';
+                } else if (tool === 'wet') {
+                    ctx.globalAlpha = 0.15;
+                    ctx.shadowBlur = size * 0.8;
+                    ctx.shadowColor = color;
                 }
 
-                if (['solid', 'airbrush', 'eraser', 'angular', 'marker', 'watercolor'].includes(tool)) {
+                // Spray brush has custom dot generation instead of a solid line
+                if (tool === 'spray') {
+                    ctx.fillStyle = color;
+                    let density = Math.max(10, size * 2.5);
+                    for (let i = 0; i < density; i++) {
+                        let rad = size * Math.sqrt(Math.random());
+                        let angle = Math.random() * 2 * Math.PI;
+                        let px = currentX + rad * Math.cos(angle);
+                        let py = currentY + rad * Math.sin(angle);
+                        ctx.globalAlpha = Math.random() * 0.6 + 0.2;
+                        ctx.fillRect(px, py, 1.5, 1.5);
+                    }
+                    startX = currentX; startY = currentY;
+                } else if (['solid', 'airbrush', 'eraser', 'velvet', 'wet'].includes(tool)) {
                     ctx.beginPath(); ctx.moveTo(startX, startY); ctx.lineTo(currentX, currentY);
                     if(tool === 'airbrush') { ctx.shadowBlur = size * 2; ctx.shadowColor = color; }
                     ctx.stroke(); startX = currentX; startY = currentY;
